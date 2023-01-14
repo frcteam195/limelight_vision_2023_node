@@ -21,6 +21,7 @@
 #include <string>
 #include <mutex>
 #include <vector>
+#include <sstream>
 
 ros::NodeHandle* node;
 std::mutex limelightMutex;
@@ -94,6 +95,7 @@ void limelight_field_center_static_transform()
 	geometry::Transform map_to_limelight_field_center;
 	map_to_limelight_field_center.linear.x(field_length / 2.0);
 	map_to_limelight_field_center.linear.y(-1.0 * field_width / 2.0);
+	map_to_limelight_field_center.angular.yaw(M_PI);
 
 	geometry_msgs::TransformStamped map_to_limelight_map_transform;
 	map_to_limelight_map_transform.transform = geometry::to_msg(map_to_limelight_field_center);
@@ -124,6 +126,47 @@ void publish_limelight_data()
 
 	while (ros::ok())
 	{
+		// ROS_INFO("Running");
+		std::vector<double> bot_pose;
+		ros::Time last_valid;
+		ck::nt::get(bot_pose, last_valid, "limelight", "botpose", bot_pose);
+		double total = 0;
+		for(auto& i : bot_pose)
+		{
+			total += i;
+		}
+		static ros::Time last_transmitted = last_valid;
+		if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted)
+		{
+			geometry::Pose robot_pose;
+			robot_pose.position.x(bot_pose[0]);
+			robot_pose.position.y(bot_pose[1]);
+			robot_pose.position.z(bot_pose[2]);
+			robot_pose.orientation.roll(ck::math::deg2rad(bot_pose[3]));
+			robot_pose.orientation.pitch(ck::math::deg2rad(bot_pose[4]));
+			robot_pose.orientation.yaw(ck::math::deg2rad(bot_pose[5]));
+
+			std::stringstream s;
+			s << robot_pose;
+			ROS_INFO("Pose: %s", s.str().c_str());
+
+			nav_msgs::Odometry odom_data;
+			odom_data.header.stamp = ros::Time().now();
+			odom_data.header.frame_id = "limelight_map";
+			odom_data.child_frame_id = "fwd_limelight";
+			odom_data.pose.pose = geometry::to_msg(robot_pose);
+			odom_data.pose.covariance =
+				 { 0.08, 0.0,  0.0,  0.0,  0.0,  0.0,
+					0.0, 0.08, 0.0,  0.0,  0.0,  0.0,
+					0.0, 0.0,  0.08, 0.0,  0.0,  0.0,
+					0.0, 0.0,  0.0,  0.08, 0.0,  0.0,
+					0.0, 0.0,  0.0,  0.0,  0.08, 0.0,
+					0.0, 0.0,  0.0,  0.0,  0.0,  0.08,};
+
+			static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
+			odom_pub.publish(odom_data);
+			last_transmitted = last_valid;
+		}
 		rate.sleep();
 	}
 }
@@ -175,12 +218,12 @@ int main(int argc, char **argv)
 	// 	return 1;
 	// }
 
-	// std::thread limelightSendThread(publish_limelight_data);
+	std::thread limelightSendThread(publish_limelight_data);
 	// ros::Subscriber limelightControl = node->subscribe("/LimelightControl", 100, limelightControlCallback);
 
 	ros::spin();
 
-	// limelightSendThread.join();
+	limelightSendThread.join();
 
 	return 0;
 }
