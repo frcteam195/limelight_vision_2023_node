@@ -9,9 +9,13 @@
 #include <nav_msgs/Odometry.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <ck_utilities/geometry/geometry.hpp>
+#include <ck_utilities/geometry/geometry_ros_helpers.hpp>
 #include "ck_utilities/NTHelper.hpp"
 #include "ck_utilities/ParameterHelper.hpp"
+#include "ck_utilities/CKMath.hpp"
 
 #include <thread>
 #include <string>
@@ -22,9 +26,89 @@ ros::NodeHandle* node;
 std::mutex limelightMutex;
 std::vector<std::string> limelight_names;
 
-tf2_ros::TransformBroadcaster* tfBroadcaster;
 tf2_ros::Buffer tfBuffer;
+tf2_ros::TransformBroadcaster* tfBroadcaster;
+tf2_ros::StaticTransformBroadcaster * tfStaticBroadcaster;
 tf2_ros::TransformListener* tfListener;
+
+static double field_length = ck::math::feet_to_meters(54.0) + ck::math::inches_to_meters(3.25);
+static double field_width = ck::math::feet_to_meters(26) + ck::math::inches_to_meters(3.5);
+
+void fwd_limelight_static_transform()
+{
+	geometry::Transform base_link_to_fwd_limelight_base;
+	base_link_to_fwd_limelight_base.linear.x(0.5);
+	base_link_to_fwd_limelight_base.linear.y(0.0);
+	base_link_to_fwd_limelight_base.linear.z(0.5);
+
+	geometry_msgs::TransformStamped baselink_to_fwd_limelight_base_transform;
+	baselink_to_fwd_limelight_base_transform.transform = geometry::to_msg(base_link_to_fwd_limelight_base);
+	baselink_to_fwd_limelight_base_transform.header.frame_id = "base_link";
+	baselink_to_fwd_limelight_base_transform.child_frame_id = "fwd_limelight_base";
+	baselink_to_fwd_limelight_base_transform.header.stamp = ros::Time().now();
+	tfStaticBroadcaster->sendTransform(baselink_to_fwd_limelight_base_transform);
+
+	geometry::Transform base_link_to_fwd_limelight = base_link_to_fwd_limelight_base;
+	base_link_to_fwd_limelight.angular.yaw();
+	base_link_to_fwd_limelight.angular.pitch();
+	base_link_to_fwd_limelight.angular.roll();
+
+	geometry_msgs::TransformStamped baselink_to_fwd_limelight_transform;
+	baselink_to_fwd_limelight_transform.transform = geometry::to_msg(base_link_to_fwd_limelight);
+	baselink_to_fwd_limelight_transform.header.frame_id = "base_link";
+	baselink_to_fwd_limelight_transform.child_frame_id = "fwd_limelight";
+	baselink_to_fwd_limelight_transform.header.stamp = ros::Time().now();
+	tfStaticBroadcaster->sendTransform(baselink_to_fwd_limelight_transform);
+}
+
+void rev_limelight_static_transform()
+{
+	geometry::Transform base_link_to_rev_limelight_base;
+	base_link_to_rev_limelight_base.linear.x(-0.5);
+	base_link_to_rev_limelight_base.linear.y(0.0);
+	base_link_to_rev_limelight_base.linear.z(0.5);
+
+	geometry_msgs::TransformStamped baselink_to_rev_limelight_base_transform;
+	baselink_to_rev_limelight_base_transform.transform = geometry::to_msg(base_link_to_rev_limelight_base);
+	baselink_to_rev_limelight_base_transform.header.frame_id = "base_link";
+	baselink_to_rev_limelight_base_transform.child_frame_id = "rev_limelight_base";
+	baselink_to_rev_limelight_base_transform.header.stamp = ros::Time().now();
+	tfStaticBroadcaster->sendTransform(baselink_to_rev_limelight_base_transform);
+
+	geometry::Transform base_link_to_rev_limelight = base_link_to_rev_limelight_base;
+	base_link_to_rev_limelight.angular.yaw();
+	base_link_to_rev_limelight.angular.pitch();
+	base_link_to_rev_limelight.angular.roll();
+
+	geometry_msgs::TransformStamped baselink_to_rev_limelight_transform;
+	baselink_to_rev_limelight_transform.transform = geometry::to_msg(base_link_to_rev_limelight);
+	baselink_to_rev_limelight_transform.header.frame_id = "base_link";
+	baselink_to_rev_limelight_transform.child_frame_id = "rev_limelight";
+	baselink_to_rev_limelight_transform.header.stamp = ros::Time().now();
+	tfStaticBroadcaster->sendTransform(baselink_to_rev_limelight_transform);
+}
+
+void limelight_field_center_static_transform()
+{
+
+	geometry::Transform map_to_limelight_field_center;
+	map_to_limelight_field_center.linear.x(field_length / 2.0);
+	map_to_limelight_field_center.linear.y(-1.0 * field_width / 2.0);
+
+	geometry_msgs::TransformStamped map_to_limelight_map_transform;
+	map_to_limelight_map_transform.transform = geometry::to_msg(map_to_limelight_field_center);
+	map_to_limelight_map_transform.header.frame_id = "map";
+	map_to_limelight_map_transform.child_frame_id = "limelight_map";
+	map_to_limelight_map_transform.header.stamp = ros::Time().now();
+	tfStaticBroadcaster->sendTransform(map_to_limelight_map_transform);
+}
+
+void publish_static_transforms()
+{
+	limelight_field_center_static_transform();
+	fwd_limelight_static_transform();
+	rev_limelight_static_transform();
+}
 
 inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
 {
@@ -79,22 +163,24 @@ int main(int argc, char **argv)
 	ros::NodeHandle n;
 	node = &n;
 	tfBroadcaster = new tf2_ros::TransformBroadcaster();
+	tfStaticBroadcaster = new tf2_ros::StaticTransformBroadcaster();
 	tfListener = new tf2_ros::TransformListener(tfBuffer);
+	publish_static_transforms();
 
-	bool required_params_found = true;
-	required_params_found &= n.getParam(CKSP(limelight_names), limelight_names);
-	if (!required_params_found)
-	{
-		ROS_ERROR("Missing required parameters for node %s. Please check the list and make sure all required parameters are included", ros::this_node::getName().c_str());
-		return 1;
-	}
+	// bool required_params_found = true;
+	// required_params_found &= n.getParam(CKSP(limelight_names), limelight_names);
+	// if (!required_params_found)
+	// {
+	// 	ROS_ERROR("Missing required parameters for node %s. Please check the list and make sure all required parameters are included", ros::this_node::getName().c_str());
+	// 	return 1;
+	// }
 
-	std::thread limelightSendThread(publish_limelight_data);
-	ros::Subscriber limelightControl = node->subscribe("/LimelightControl", 100, limelightControlCallback);
+	// std::thread limelightSendThread(publish_limelight_data);
+	// ros::Subscriber limelightControl = node->subscribe("/LimelightControl", 100, limelightControlCallback);
 
 	ros::spin();
 
-	limelightSendThread.join();
+	// limelightSendThread.join();
 
 	return 0;
 }
