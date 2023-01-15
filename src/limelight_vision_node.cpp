@@ -99,7 +99,7 @@ void limelight_field_center_static_transform()
 
 	geometry_msgs::TransformStamped map_to_limelight_map_transform;
 	map_to_limelight_map_transform.transform = geometry::to_msg(map_to_limelight_field_center);
-	map_to_limelight_map_transform.header.frame_id = "map";
+	map_to_limelight_map_transform.header.frame_id = "odom";
 	map_to_limelight_map_transform.child_frame_id = "limelight_map";
 	map_to_limelight_map_transform.header.stamp = ros::Time().now();
 	tfStaticBroadcaster->sendTransform(map_to_limelight_map_transform);
@@ -153,7 +153,7 @@ void publish_limelight_data()
 			nav_msgs::Odometry odom_data;
 			odom_data.header.stamp = ros::Time().now();
 			odom_data.header.frame_id = "limelight_map";
-			odom_data.child_frame_id = "fwd_limelight";
+			odom_data.child_frame_id = "rev_limelight";
 			odom_data.pose.pose = geometry::to_msg(robot_pose);
 			odom_data.pose.covariance =
 				 { 0.08, 0.0,  0.0,  0.0,  0.0,  0.0,
