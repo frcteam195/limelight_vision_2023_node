@@ -156,12 +156,12 @@ void publish_limelight_data()
 			odom_data.child_frame_id = "rev_limelight";
 			odom_data.pose.pose = geometry::to_msg(robot_pose);
 			odom_data.pose.covariance =
-				 { 0.08, 0.0,  0.0,  0.0,  0.0,  0.0,
-					0.0, 0.08, 0.0,  0.0,  0.0,  0.0,
-					0.0, 0.0,  0.08, 0.0,  0.0,  0.0,
-					0.0, 0.0,  0.0,  0.08, 0.0,  0.0,
-					0.0, 0.0,  0.0,  0.0,  0.08, 0.0,
-					0.0, 0.0,  0.0,  0.0,  0.0,  0.08,};
+				 {  1.9, 0.0,  0.0,  0.0,  0.0,  0.0,
+					0.0, 1.0,  0.0,  0.0,  0.0,  0.0,
+					0.0, 0.0,  1.0,  0.0,  0.0,  0.0,
+					0.0, 0.0,  0.0,  1.0,  0.0,  0.0,
+					0.0, 0.0,  0.0,  0.0,  1.0,  0.0,
+					0.0, 0.0,  0.0,  0.0,  0.0,  1.0,};
 
 			static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
 			odom_pub.publish(odom_data);
