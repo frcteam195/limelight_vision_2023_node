@@ -117,6 +117,66 @@ inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
 	return ((ros::Time::now() - checkedTime) < ros::Duration(timeout));
 }
 
+void process_limelight_data(std::string limelight_name)
+{
+    std::vector<double> bot_pose;
+    ros::Time last_valid;
+    ck::nt::get(bot_pose, last_valid, limelight_name, "botpose", bot_pose);
+    double total = 0;
+    for(auto& i : bot_pose)
+    {
+        total += i;
+    }
+    static ros::Time last_transmitted = last_valid;
+
+    // we're gonna go crazy here and do back to back outlier rejection across both cameras
+    static float last_x = 0;
+    static float last_y = 0;
+    static float last_yaw = 0;
+
+    if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted)
+    {
+        geometry::Pose robot_pose;
+        robot_pose.position.x(bot_pose[0]);
+        robot_pose.position.y(bot_pose[1]);
+        robot_pose.position.z(bot_pose[2]);
+        robot_pose.orientation.roll(ck::math::deg2rad(bot_pose[3]));
+        robot_pose.orientation.pitch(ck::math::deg2rad(bot_pose[4]));
+        robot_pose.orientation.yaw(ck::math::deg2rad(bot_pose[5]));
+
+        bool reject = false;
+        reject = reject || std::abs(robot_pose.position.z()) > 0.1;
+        reject = reject || std::abs(last_x - robot_pose.position.x()) > 0.5;
+        reject = reject || std::abs(last_y - robot_pose.position.y()) > 0.5;
+        reject = reject || std::abs(ck::math::rad2deg(last_yaw - robot_pose.orientation.yaw())) > 20.0;
+
+        last_x = robot_pose.position.x();
+        last_y = robot_pose.position.y();
+        last_yaw = robot_pose.orientation.yaw();
+
+        if (reject)
+        {
+            return;
+        }
+
+        nav_msgs::Odometry odom_data;
+        odom_data.header.stamp = ros::Time().now();
+        odom_data.header.frame_id = "limelight_map";
+        odom_data.child_frame_id = "limelight_map";
+        odom_data.pose.pose = geometry::to_msg(robot_pose);
+
+        geometry::Covariance limelight_covariance;
+        limelight_covariance.x_var(0.5);
+        limelight_covariance.y_var(0.5);
+        limelight_covariance.yaw_var(ck::math::deg2rad(20));
+        odom_data.pose.covariance = geometry::to_msg(limelight_covariance);
+
+        static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
+        odom_pub.publish(odom_data);
+        last_transmitted = last_valid;
+    }
+}
+
 void publish_limelight_data()
 {
 	static ros::Publisher limelight_pub = node->advertise<limelight_vision_node::Limelight_Status>("LimelightStatus", 1);
@@ -126,49 +186,9 @@ void publish_limelight_data()
 
 	while (ros::ok())
 	{
-		// ROS_INFO("Running");
-		std::vector<double> bot_pose;
-		ros::Time last_valid;
-		ck::nt::get(bot_pose, last_valid, "limelight", "botpose", bot_pose);
-		double total = 0;
-		for(auto& i : bot_pose)
-		{
-			total += i;
-		}
-		static ros::Time last_transmitted = last_valid;
-		if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted)
-		{
-			geometry::Pose robot_pose;
-			robot_pose.position.x(bot_pose[0]);
-			robot_pose.position.y(bot_pose[1]);
-			robot_pose.position.z(bot_pose[2]);
-			robot_pose.orientation.roll(ck::math::deg2rad(bot_pose[3]));
-			robot_pose.orientation.pitch(ck::math::deg2rad(bot_pose[4]));
-			robot_pose.orientation.yaw(ck::math::deg2rad(bot_pose[5]));
-
-			std::stringstream s;
-			s << robot_pose;
-			ROS_INFO("Pose: %s", s.str().c_str());
-
-			nav_msgs::Odometry odom_data;
-			odom_data.header.stamp = ros::Time().now();
-			odom_data.header.frame_id = "limelight_map";
-			odom_data.child_frame_id = "rev_limelight";
-			odom_data.pose.pose = geometry::to_msg(robot_pose);
-			odom_data.pose.covariance =
-				 {  1.9, 0.0,  0.0,  0.0,  0.0,  0.0,
-					0.0, 1.0,  0.0,  0.0,  0.0,  0.0,
-					0.0, 0.0,  1.0,  0.0,  0.0,  0.0,
-					0.0, 0.0,  0.0,  1.0,  0.0,  0.0,
-					0.0, 0.0,  0.0,  0.0,  1.0,  0.0,
-					0.0, 0.0,  0.0,  0.0,  0.0,  1.0,};
-
-			static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
-			odom_pub.publish(odom_data);
-			last_transmitted = last_valid;
-		}
+        process_limelight_data("limelight-front");
 		rate.sleep();
-	}
+    }
 }
 
 void limelightControlCallback(const limelight_vision_node::Limelight_Control& msg)
