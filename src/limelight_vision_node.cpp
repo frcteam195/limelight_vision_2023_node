@@ -187,6 +187,7 @@ void publish_limelight_data()
 	while (ros::ok())
 	{
         process_limelight_data("limelight-front");
+        process_limelight_data("limelight-back");
 		rate.sleep();
     }
 }
