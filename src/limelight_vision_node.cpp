@@ -190,14 +190,14 @@ void process_limelight_data(std::string limelight_name)
         reject = reject || std::abs(last_y - robot_pose.position.y()) > 0.5;
         reject = reject || std::abs(ck::math::rad2deg(last_yaw - robot_pose.orientation.yaw())) > 20.0;
 
+        last_x = robot_pose.position.x();
+        last_y = robot_pose.position.y();
+        last_yaw = robot_pose.orientation.yaw();
+
         if (reject)
         {
             return;
         }
-
-        last_x = robot_pose.position.x();
-        last_y = robot_pose.position.y();
-        last_yaw = robot_pose.orientation.yaw();
 
         nav_msgs::Odometry odom_data;
         odom_data.header.stamp = ros::Time().now();
