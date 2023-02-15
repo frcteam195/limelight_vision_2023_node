@@ -16,6 +16,11 @@
 #include "ck_utilities/NTHelper.hpp"
 #include "ck_utilities/ParameterHelper.hpp"
 #include "ck_utilities/CKMath.hpp"
+#include "ck_utilities/Logger.hpp"
+
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/foreach.hpp>
 
 #include <thread>
 #include <string>
@@ -129,13 +134,46 @@ void process_limelight_data(std::string limelight_name)
     }
     static ros::Time last_transmitted = last_valid;
 
+    std::string bot_json = "";
+    ros::Time last_valid_json;
+    ck::nt::get(bot_json, last_valid_json, limelight_name, "json", bot_json);
+
     // we're gonna go crazy here and do back to back outlier rejection across both cameras
     static float last_x = 0;
     static float last_y = 0;
     static float last_yaw = 0;
 
-    if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted)
+    if(bot_json.length() == 0)
     {
+        ck::log_error << ":(" << std::flush;
+    }
+
+    if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted && bot_json.length() > 0)
+    {
+        try
+        {
+            std::stringstream ss;
+            ss << bot_json;
+            boost::property_tree::ptree pt;
+            boost::property_tree::read_json(ss, pt);
+
+            // BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("particles.electron"))
+            // {
+            //     ck::log_error << v.first.data() << std::flush;
+            // }
+        }
+        catch ( std::exception& ex )
+        {
+            ck::log_error << "Exception: " << ex.what();
+            ck::log_error << "Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
+            return;
+        }
+        catch ( ... )
+        {
+            ck::log_error << "Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
+            return;
+        }
+
         geometry::Pose robot_pose;
         robot_pose.position.x(bot_pose[0]);
         robot_pose.position.y(bot_pose[1]);
@@ -154,10 +192,11 @@ void process_limelight_data(std::string limelight_name)
         last_y = robot_pose.position.y();
         last_yaw = robot_pose.orientation.yaw();
 
-        if (reject)
-        {
-            return;
-        }
+        // if (reject)
+        // {
+        //     ck::log_error << "REJECTING : " << limelight_name << std::flush;
+        //     return;
+        // }
 
         nav_msgs::Odometry odom_data;
         odom_data.header.stamp = ros::Time().now();
