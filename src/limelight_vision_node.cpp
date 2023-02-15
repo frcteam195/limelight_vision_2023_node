@@ -194,7 +194,17 @@ void process_limelight_data(std::string limelight_name)
         last_y = robot_pose.position.y();
         last_yaw = robot_pose.orientation.yaw();
 
+        static uint32_t match_count = 0;
+
         if (reject)
+        {
+            match_count = 0;
+            return;
+        }
+
+        match_count ++;
+
+        if (match_count < 2)
         {
             return;
         }
