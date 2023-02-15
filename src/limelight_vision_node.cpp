@@ -143,13 +143,9 @@ void process_limelight_data(std::string limelight_name)
     static float last_y = 0;
     static float last_yaw = 0;
 
-    if(bot_json.length() == 0)
-    {
-        ck::log_error << ":(" << std::flush;
-    }
-
     if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted && bot_json.length() > 0)
     {
+        uint32_t marker_count = 0;
         try
         {
             std::stringstream ss;
@@ -157,10 +153,11 @@ void process_limelight_data(std::string limelight_name)
             boost::property_tree::ptree pt;
             boost::property_tree::read_json(ss, pt);
 
-            // BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("particles.electron"))
-            // {
-            //     ck::log_error << v.first.data() << std::flush;
-            // }
+            BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("Results.Fiducial"))
+            {
+                (void) v;
+                marker_count ++;
+            }
         }
         catch ( std::exception& ex )
         {
@@ -171,6 +168,11 @@ void process_limelight_data(std::string limelight_name)
         catch ( ... )
         {
             ck::log_error << "Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
+            return;
+        }
+
+        if(marker_count < 2)
+        {
             return;
         }
 
@@ -191,12 +193,6 @@ void process_limelight_data(std::string limelight_name)
         last_x = robot_pose.position.x();
         last_y = robot_pose.position.y();
         last_yaw = robot_pose.orientation.yaw();
-
-        // if (reject)
-        // {
-        //     ck::log_error << "REJECTING : " << limelight_name << std::flush;
-        //     return;
-        // }
 
         nav_msgs::Odometry odom_data;
         odom_data.header.stamp = ros::Time().now();
