@@ -156,7 +156,7 @@ void process_limelight_data(std::string limelight_name)
             BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("Results.Fiducial"))
             {
                 (void) v;
-                BOOST_FOREACH(boost::property_tree::ptree::value_type &t, v.second.get_child("Results.Fiducial"))
+                BOOST_FOREACH(boost::property_tree::ptree::value_type &t, v.second.get_child("t6r_fs"))
                 {
                     ck::log_error << t.second.data() << std::flush;
                 }
