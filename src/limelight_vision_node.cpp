@@ -200,7 +200,7 @@ void process_limelight_data(std::string limelight_name)
             geometry::Transform trans = first_pose.get_Transform((*i).second);
             if (std::abs(trans.linear.norm()) > 0.5)
                 return;
-            if (std::abs(trans.angular.yaw()) > 20.0)
+            if (std::abs(trans.angular.yaw()) > ck::math::deg2rad(20.0))
                 return;
             if (std::abs((*i).second.position.z() > 0.1))
                 return;
