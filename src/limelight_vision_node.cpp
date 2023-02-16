@@ -124,16 +124,6 @@ inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
 
 void process_limelight_data(std::string limelight_name)
 {
-    std::vector<double> bot_pose;
-    ros::Time last_valid;
-    ck::nt::get(bot_pose, last_valid, limelight_name, "botpose", bot_pose);
-    double total = 0;
-    for(auto& i : bot_pose)
-    {
-        total += i;
-    }
-    static ros::Time last_transmitted = last_valid;
-
     std::string bot_json = "";
     ros::Time last_valid_json;
     ck::nt::get(bot_json, last_valid_json, limelight_name, "json", bot_json);
@@ -142,10 +132,13 @@ void process_limelight_data(std::string limelight_name)
     static float last_x = 0;
     static float last_y = 0;
     static float last_yaw = 0;
+    static ros::Time last_transmitted = last_valid_json;
 
-    if(bot_pose.size() == 6 && total != 0 && last_valid > last_transmitted && bot_json.length() > 0)
+    if(last_valid_json > last_transmitted && bot_json.length() > 0)
     {
-        uint32_t marker_count = 0;
+        last_transmitted = last_valid_json;
+        std::map<int, geometry::Pose> poses;
+
         try
         {
             std::stringstream ss;
@@ -156,11 +149,28 @@ void process_limelight_data(std::string limelight_name)
             BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("Results.Fiducial"))
             {
                 (void) v;
+                std::vector<double> values;
+                int marker_id = v.second.get_child("fID").get_value<int>();
                 BOOST_FOREACH(boost::property_tree::ptree::value_type &t, v.second.get_child("t6r_fs"))
                 {
-                    ck::log_error << t.second.data() << std::flush;
+                    values.push_back(t.second.get_value<double>());
                 }
-                marker_count ++;
+
+                if (values.size() < 6)
+                {
+                    ck::log_error << "Incorrect number of doubles in pose structure" << std::flush;
+                    return;
+                }
+
+                geometry::Pose pose;
+                pose.position.x(values[0]);
+                pose.position.y(values[1]);
+                pose.position.z(values[2]);
+                pose.orientation.roll(values[3]);
+                pose.orientation.pitch(values[4]);
+                pose.orientation.yaw(values[5]);
+
+                poses[marker_id] = pose;
             }
         }
         catch ( std::exception& ex )
@@ -175,21 +185,32 @@ void process_limelight_data(std::string limelight_name)
             return;
         }
 
-        if(marker_count < 2)
+        if(poses.size() < 2)
         {
             return;
         }
 
-        geometry::Pose robot_pose;
-        robot_pose.position.x(bot_pose[0]);
-        robot_pose.position.y(bot_pose[1]);
-        robot_pose.position.z(bot_pose[2]);
-        robot_pose.orientation.roll(ck::math::deg2rad(bot_pose[3]));
-        robot_pose.orientation.pitch(ck::math::deg2rad(bot_pose[4]));
-        robot_pose.orientation.yaw(ck::math::deg2rad(bot_pose[5]));
+        geometry::Pose first_pose = (*poses.begin()).second;
+        geometry::Pose average_pose = first_pose;
+
+        for(std::map<int, geometry::Pose>::iterator i = poses.begin() ++;
+            i != poses.end();
+            i++)
+        {
+            geometry::Transform trans = first_pose.get_Transform((*i).second);
+            if (std::abs(trans.linear.norm()) > 0.5)
+                return;
+            if (std::abs(trans.angular.yaw()) > 20.0)
+                return;
+            if (std::abs((*i).second.position.z() > 0.1))
+                return;
+
+            average_pose = (average_pose + (*i).second) / 2.0;
+        }
+
+        geometry::Pose robot_pose = average_pose;
 
         bool reject = false;
-        reject = reject || std::abs(robot_pose.position.z()) > 0.1;
         reject = reject || std::abs(last_x - robot_pose.position.x()) > 0.5;
         reject = reject || std::abs(last_y - robot_pose.position.y()) > 0.5;
         reject = reject || std::abs(ck::math::rad2deg(last_yaw - robot_pose.orientation.yaw())) > 20.0;
@@ -208,10 +229,11 @@ void process_limelight_data(std::string limelight_name)
 
         match_count ++;
 
-        if (match_count < 2)
-        {
-            return;
-        }
+        (void) match_count;
+        // if (match_count < 2)
+        // {
+        //     return;
+        // }
 
         nav_msgs::Odometry odom_data;
         odom_data.header.stamp = ros::Time().now();
@@ -227,7 +249,6 @@ void process_limelight_data(std::string limelight_name)
 
         static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
         odom_pub.publish(odom_data);
-        last_transmitted = last_valid;
     }
 }
 
