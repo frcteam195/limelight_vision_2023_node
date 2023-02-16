@@ -158,7 +158,7 @@ void process_limelight_data(std::string limelight_name)
 
                 if (values.size() < 6)
                 {
-                    ck::log_error << "Incorrect number of doubles in pose structure" << std::flush;
+                    ck::log_error << limelight_name << ":Incorrect number of doubles in pose structure" << std::flush;
                     return;
                 }
 
@@ -175,75 +175,97 @@ void process_limelight_data(std::string limelight_name)
         }
         catch ( std::exception& ex )
         {
-            ck::log_error << "Exception: " << ex.what();
-            ck::log_error << "Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
+            ck::log_error << limelight_name << ": Exception: " << ex.what();
+            ck::log_error << limelight_name << ":Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
             return;
         }
         catch ( ... )
         {
-            ck::log_error << "Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
+            ck::log_error << limelight_name << ":Bad JSON received len(" << bot_json.length() << "): " << std::endl << bot_json << std::flush;
             return;
         }
 
-        if(poses.size() < 2)
+        if(poses.size() < 1)
         {
+            ck::log_debug << limelight_name << ": Didn't get any poses" << std::flush;
             return;
         }
 
-        geometry::Pose first_pose = (*poses.begin()).second;
-        geometry::Pose average_pose = first_pose;
+        std::vector<geometry::Pose> passing_poses;
 
-        for(std::map<int, geometry::Pose>::iterator i = poses.begin() ++;
-            i != poses.end();
-            i++)
+        for(auto &i : poses)
         {
-            geometry::Transform trans = first_pose.get_Transform((*i).second);
-            if (std::abs(trans.linear.norm()) > 0.5)
-                return;
-            if (std::abs(trans.angular.yaw()) > ck::math::deg2rad(20.0))
-                return;
-            if (std::abs((*i).second.position.z() > 0.1))
-                return;
+            auto &pose = i.second;
 
-            average_pose = (average_pose + (*i).second) / 2.0;
+            if (pose.position.z() > 0.1)
+            {
+                ck::log_debug << "Rejecting pose with z: " << pose.position.z() << std::flush;
+                continue;
+            }
+            if (pose.orientation.pitch() > ck::math::deg2rad(5.0))
+            {
+                ck::log_debug << "Rejecting pose with pitch: " << ck::math::rad2deg(pose.orientation.pitch()) << std::flush;
+                continue;
+            }
+            if (pose.orientation.roll() > ck::math::deg2rad(5.0))
+            {
+                ck::log_debug << "Rejecting pose with roll: " << ck::math::rad2deg(pose.orientation.roll()) << std::flush;
+                continue;
+            }
+            passing_poses.push_back(pose);
         }
 
-        geometry::Pose robot_pose = average_pose;
+        if (passing_poses.size() < 1)
+        {
+            ck::log_debug << "No passing poses" << std::flush;
+            return;
+        }
+
+        geometry::Pose average_pose = passing_poses[0];
+
+        for (size_t i = 1; i < passing_poses.size(); i++)
+        {
+            average_pose = average_pose + passing_poses[i];
+        }
+
+        average_pose = average_pose / passing_poses.size();
 
         bool reject = false;
-        reject = reject || std::abs(last_x - robot_pose.position.x()) > 0.5;
-        reject = reject || std::abs(last_y - robot_pose.position.y()) > 0.5;
-        reject = reject || std::abs(ck::math::rad2deg(last_yaw - robot_pose.orientation.yaw())) > 20.0;
+        reject = reject || std::abs(last_x - average_pose.position.x()) > 0.5;
+        reject = reject || std::abs(last_y - average_pose.position.y()) > 0.5;
+        reject = reject || std::abs(ck::math::rad2deg(last_yaw - average_pose.orientation.yaw())) > 20.0;
 
-        last_x = robot_pose.position.x();
-        last_y = robot_pose.position.y();
-        last_yaw = robot_pose.orientation.yaw();
+        last_x = average_pose.position.x();
+        last_y = average_pose.position.y();
+        last_yaw = average_pose.orientation.yaw();
 
         static uint32_t match_count = 0;
 
         if (reject)
         {
             match_count = 0;
+            ck::log_debug << limelight_name << ": Filter reject" << std::flush;
             return;
         }
 
         match_count ++;
 
         (void) match_count;
-        // if (match_count < 2)
-        // {
-        //     return;
-        // }
+        if (match_count < 2)
+        {
+            ck::log_debug << limelight_name << ": Filter reject" << std::flush;
+            return;
+        }
 
         nav_msgs::Odometry odom_data;
         odom_data.header.stamp = ros::Time().now();
         odom_data.header.frame_id = "limelight_map";
         odom_data.child_frame_id = "limelight_map";
-        odom_data.pose.pose = geometry::to_msg(robot_pose);
+        odom_data.pose.pose = geometry::to_msg(average_pose);
 
         geometry::Covariance limelight_covariance;
-        limelight_covariance.x_var(0.5);
-        limelight_covariance.y_var(0.5);
+        limelight_covariance.x_var(1.0);
+        limelight_covariance.y_var(1.0);
         limelight_covariance.yaw_var(ck::math::deg2rad(20));
         odom_data.pose.covariance = geometry::to_msg(limelight_covariance);
 
