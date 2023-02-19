@@ -40,60 +40,6 @@ tf2_ros::TransformListener* tfListener;
 static double field_length = ck::math::feet_to_meters(54.0) + ck::math::inches_to_meters(3.25);
 static double field_width = ck::math::feet_to_meters(26) + ck::math::inches_to_meters(3.5);
 
-void fwd_limelight_static_transform()
-{
-	geometry::Transform base_link_to_fwd_limelight_base;
-	base_link_to_fwd_limelight_base.linear.x(0.5);
-	base_link_to_fwd_limelight_base.linear.y(0.0);
-	base_link_to_fwd_limelight_base.linear.z(0.5);
-
-	geometry_msgs::TransformStamped baselink_to_fwd_limelight_base_transform;
-	baselink_to_fwd_limelight_base_transform.transform = geometry::to_msg(base_link_to_fwd_limelight_base);
-	baselink_to_fwd_limelight_base_transform.header.frame_id = "base_link";
-	baselink_to_fwd_limelight_base_transform.child_frame_id = "fwd_limelight_base";
-	baselink_to_fwd_limelight_base_transform.header.stamp = ros::Time().now();
-	tfStaticBroadcaster->sendTransform(baselink_to_fwd_limelight_base_transform);
-
-	geometry::Transform base_link_to_fwd_limelight = base_link_to_fwd_limelight_base;
-	base_link_to_fwd_limelight.angular.yaw();
-	base_link_to_fwd_limelight.angular.pitch();
-	base_link_to_fwd_limelight.angular.roll();
-
-	geometry_msgs::TransformStamped baselink_to_fwd_limelight_transform;
-	baselink_to_fwd_limelight_transform.transform = geometry::to_msg(base_link_to_fwd_limelight);
-	baselink_to_fwd_limelight_transform.header.frame_id = "base_link";
-	baselink_to_fwd_limelight_transform.child_frame_id = "fwd_limelight";
-	baselink_to_fwd_limelight_transform.header.stamp = ros::Time().now();
-	tfStaticBroadcaster->sendTransform(baselink_to_fwd_limelight_transform);
-}
-
-void rev_limelight_static_transform()
-{
-	geometry::Transform base_link_to_rev_limelight_base;
-	base_link_to_rev_limelight_base.linear.x(-0.5);
-	base_link_to_rev_limelight_base.linear.y(0.0);
-	base_link_to_rev_limelight_base.linear.z(0.5);
-
-	geometry_msgs::TransformStamped baselink_to_rev_limelight_base_transform;
-	baselink_to_rev_limelight_base_transform.transform = geometry::to_msg(base_link_to_rev_limelight_base);
-	baselink_to_rev_limelight_base_transform.header.frame_id = "base_link";
-	baselink_to_rev_limelight_base_transform.child_frame_id = "rev_limelight_base";
-	baselink_to_rev_limelight_base_transform.header.stamp = ros::Time().now();
-	tfStaticBroadcaster->sendTransform(baselink_to_rev_limelight_base_transform);
-
-	geometry::Transform base_link_to_rev_limelight = base_link_to_rev_limelight_base;
-	base_link_to_rev_limelight.angular.yaw();
-	base_link_to_rev_limelight.angular.pitch();
-	base_link_to_rev_limelight.angular.roll();
-
-	geometry_msgs::TransformStamped baselink_to_rev_limelight_transform;
-	baselink_to_rev_limelight_transform.transform = geometry::to_msg(base_link_to_rev_limelight);
-	baselink_to_rev_limelight_transform.header.frame_id = "base_link";
-	baselink_to_rev_limelight_transform.child_frame_id = "rev_limelight";
-	baselink_to_rev_limelight_transform.header.stamp = ros::Time().now();
-	tfStaticBroadcaster->sendTransform(baselink_to_rev_limelight_transform);
-}
-
 void limelight_field_center_static_transform()
 {
 
@@ -113,8 +59,6 @@ void limelight_field_center_static_transform()
 void publish_static_transforms()
 {
 	limelight_field_center_static_transform();
-	fwd_limelight_static_transform();
-	rev_limelight_static_transform();
 }
 
 inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
@@ -122,7 +66,7 @@ inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
 	return ((ros::Time::now() - checkedTime) < ros::Duration(timeout));
 }
 
-void process_limelight_data(std::string limelight_name)
+void publish_localization_data(std::string limelight_name)
 {
     std::string bot_json = "";
     ros::Time last_valid_json;
@@ -274,6 +218,45 @@ void process_limelight_data(std::string limelight_name)
     }
 }
 
+limelight_vision_node::Limelight_Info process_limelight_data(std::string limelight_name)
+{
+    publish_localization_data(limelight_name);
+
+    limelight_vision_node::Limelight_Info limelightInfo;
+    limelightInfo.name = limelight_name;
+
+    ros::Time response_time(0);
+    double default_val = 0;
+    bool limelight_data_valid = false;
+    const double timeout = 0.2;
+
+    double tv = 0;
+    ck::nt::get(tv, response_time, limelight_name, "tv", default_val);
+    limelightInfo.target_valid = tv > 0 ? true : false;
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    ck::nt::get(limelightInfo.target_dx_deg, response_time, limelight_name, "tx", default_val);
+    limelightInfo.target_dx_deg = -limelightInfo.target_dx_deg;
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    ck::nt::get(limelightInfo.target_dy_deg, response_time, limelight_name, "ty", default_val);
+    limelightInfo.target_dy_deg = -limelightInfo.target_dy_deg;
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    ck::nt::get(limelightInfo.target_area, response_time, limelight_name, "ta", default_val);
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    ck::nt::get(limelightInfo.target_skew, response_time, limelight_name, "ts", default_val);
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    ck::nt::get(limelightInfo.target_latency, response_time, limelight_name, "tl", default_val);
+    limelight_data_valid |= time_not_timed_out(response_time, timeout);
+
+    limelightInfo.target_valid &= limelight_data_valid;
+
+    return limelightInfo;
+}
+
 void publish_limelight_data()
 {
 	static ros::Publisher limelight_pub = node->advertise<limelight_vision_node::Limelight_Status>("LimelightStatus", 1);
@@ -283,8 +266,9 @@ void publish_limelight_data()
 
 	while (ros::ok())
 	{
-        process_limelight_data("limelight-front");
-        process_limelight_data("limelight-back");
+        limelightStatus.limelights.push_back(process_limelight_data("limelight-front"));
+        limelightStatus.limelights.push_back(process_limelight_data("limelight-back"));
+        limelight_pub.publish(limelightStatus);
 		rate.sleep();
     }
 }
@@ -328,16 +312,8 @@ int main(int argc, char **argv)
 	tfListener = new tf2_ros::TransformListener(tfBuffer);
 	publish_static_transforms();
 
-	// bool required_params_found = true;
-	// required_params_found &= n.getParam(CKSP(limelight_names), limelight_names);
-	// if (!required_params_found)
-	// {
-	// 	ROS_ERROR("Missing required parameters for node %s. Please check the list and make sure all required parameters are included", ros::this_node::getName().c_str());
-	// 	return 1;
-	// }
-
 	std::thread limelightSendThread(publish_limelight_data);
-	// ros::Subscriber limelightControl = node->subscribe("/LimelightControl", 100, limelightControlCallback);
+	ros::Subscriber limelightControl = node->subscribe("/LimelightControl", 100, limelightControlCallback);
 
 	ros::spin();
 
