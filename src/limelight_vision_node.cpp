@@ -129,7 +129,7 @@ void publish_localization_data(std::string limelight_name)
             return;
         }
 
-        if(poses.size() < 1)
+        if(poses.size() < 2)
         {
             ck::log_debug << limelight_name << ": Didn't get any poses" << std::flush;
             return;
