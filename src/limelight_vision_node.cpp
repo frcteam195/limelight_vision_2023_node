@@ -66,6 +66,21 @@ inline bool time_not_timed_out(ros::Time& checkedTime, const double& timeout)
 	return ((ros::Time::now() - checkedTime) < ros::Duration(timeout));
 }
 
+void publish_localization_tf(geometry::Pose bot_pose)
+{
+    geometry::Transform transform_pose;
+    transform_pose.linear = bot_pose.position;
+    transform_pose.linear.z(0);
+    transform_pose.angular = bot_pose.orientation;
+    geometry_msgs::TransformStamped transform;
+    transform.header.frame_id = "limelight_map";
+    transform.header.stamp = ros::Time::now();
+    transform.child_frame_id = "limelight_result";
+    transform.transform = geometry::to_msg(transform_pose);
+
+    tfBroadcaster->sendTransform(transform);
+}
+
 void publish_localization_data(std::string limelight_name)
 {
     std::string bot_json = "";
@@ -82,6 +97,7 @@ void publish_localization_data(std::string limelight_name)
     {
         last_transmitted = last_valid_json;
         std::map<int, geometry::Pose> poses;
+        geometry::Pose bot_pose;
 
         try
         {
@@ -116,6 +132,18 @@ void publish_localization_data(std::string limelight_name)
 
                 poses[marker_id] = pose;
             }
+
+            std::vector<double> bot_pose_values;
+            BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("Results.botpose"))
+            {
+                bot_pose_values.push_back(v.second.get_value<double>());
+            }
+            bot_pose.position.x(bot_pose_values[0]);
+            bot_pose.position.y(bot_pose_values[1]);
+            bot_pose.position.z(bot_pose_values[2]);
+            bot_pose.orientation.roll(ck::math::deg2rad(bot_pose_values[3]));
+            bot_pose.orientation.pitch(ck::math::deg2rad(bot_pose_values[4]));
+            bot_pose.orientation.yaw(ck::math::deg2rad(bot_pose_values[5]));
         }
         catch ( std::exception& ex )
         {
@@ -134,53 +162,71 @@ void publish_localization_data(std::string limelight_name)
             return;
         }
 
-        std::vector<geometry::Pose> passing_poses;
 
-        for(auto &i : poses)
+
+        // std::vector<geometry::Pose> passing_poses;
+
+        // for(auto &i : poses)
+        // {
+        //     auto &pose = i.second;
+
+        //     if (pose.position.z() > 0.1)
+        //     {
+        //         ck::log_debug << "Rejecting pose with z: " << pose.position.z() << std::flush;
+        //         continue;
+        //     }
+        //     if (pose.orientation.pitch() > ck::math::deg2rad(5.0))
+        //     {
+        //         ck::log_debug << "Rejecting pose with pitch: " << ck::math::rad2deg(pose.orientation.pitch()) << std::flush;
+        //         continue;
+        //     }
+        //     if (pose.orientation.roll() > ck::math::deg2rad(5.0))
+        //     {
+        //         ck::log_debug << "Rejecting pose with roll: " << ck::math::rad2deg(pose.orientation.roll()) << std::flush;
+        //         continue;
+        //     }
+        //     passing_poses.push_back(pose);
+        // }
+
+        // if (passing_poses.size() < 1)
+        // {
+        //     ck::log_debug << "No passing poses" << std::flush;
+        //     return;
+        // }
+
+        // geometry::Pose average_pose = passing_poses[0];
+
+        // for (size_t i = 1; i < passing_poses.size(); i++)
+        // {
+        //     average_pose = average_pose + passing_poses[i];
+        // }
+
+        // average_pose = average_pose / passing_poses.size();
+
+        if (std::abs(bot_pose.position.z()) > 0.1)
         {
-            auto &pose = i.second;
-
-            if (pose.position.z() > 0.1)
-            {
-                ck::log_debug << "Rejecting pose with z: " << pose.position.z() << std::flush;
-                continue;
-            }
-            if (pose.orientation.pitch() > ck::math::deg2rad(5.0))
-            {
-                ck::log_debug << "Rejecting pose with pitch: " << ck::math::rad2deg(pose.orientation.pitch()) << std::flush;
-                continue;
-            }
-            if (pose.orientation.roll() > ck::math::deg2rad(5.0))
-            {
-                ck::log_debug << "Rejecting pose with roll: " << ck::math::rad2deg(pose.orientation.roll()) << std::flush;
-                continue;
-            }
-            passing_poses.push_back(pose);
+            ck::log_debug << "Rejecting pose with z: " << bot_pose.position.z() << std::flush;
+            return;
         }
-
-        if (passing_poses.size() < 1)
+        if (std::abs(bot_pose.orientation.pitch()) > ck::math::deg2rad(5.0))
         {
-            ck::log_debug << "No passing poses" << std::flush;
+            ck::log_debug << "Rejecting pose with pitch: " << ck::math::rad2deg(bot_pose.orientation.pitch()) << std::flush;
+            return;
+        }
+        if (std::abs(bot_pose.orientation.roll()) > ck::math::deg2rad(5.0))
+        {
+            ck::log_debug << "Rejecting pose with roll: " << ck::math::rad2deg(bot_pose.orientation.roll()) << std::flush;
             return;
         }
 
-        geometry::Pose average_pose = passing_poses[0];
-
-        for (size_t i = 1; i < passing_poses.size(); i++)
-        {
-            average_pose = average_pose + passing_poses[i];
-        }
-
-        average_pose = average_pose / passing_poses.size();
-
         bool reject = false;
-        reject = reject || std::abs(last_x - average_pose.position.x()) > 0.5;
-        reject = reject || std::abs(last_y - average_pose.position.y()) > 0.5;
-        reject = reject || std::abs(ck::math::rad2deg(last_yaw - average_pose.orientation.yaw())) > 20.0;
+        reject = reject || std::abs(last_x - bot_pose.position.x()) > 0.5;
+        reject = reject || std::abs(last_y - bot_pose.position.y()) > 0.5;
+        reject = reject || std::abs(ck::math::rad2deg(last_yaw - bot_pose.orientation.yaw())) > 20.0;
 
-        last_x = average_pose.position.x();
-        last_y = average_pose.position.y();
-        last_yaw = average_pose.orientation.yaw();
+        last_x = bot_pose.position.x();
+        last_y = bot_pose.position.y();
+        last_yaw = bot_pose.orientation.yaw();
 
         static uint32_t match_count = 0;
 
@@ -204,16 +250,17 @@ void publish_localization_data(std::string limelight_name)
         odom_data.header.stamp = ros::Time().now();
         odom_data.header.frame_id = "limelight_map";
         odom_data.child_frame_id = "limelight_map";
-        odom_data.pose.pose = geometry::to_msg(average_pose);
+        odom_data.pose.pose = geometry::to_msg(bot_pose);
 
         geometry::Covariance limelight_covariance;
         limelight_covariance.x_var(1.0);
         limelight_covariance.y_var(1.0);
-        limelight_covariance.yaw_var(ck::math::deg2rad(20));
         odom_data.pose.covariance = geometry::to_msg(limelight_covariance);
 
         static ros::Publisher odom_pub = node->advertise<nav_msgs::Odometry>("LimelightOdometry", 100);
         odom_pub.publish(odom_data);
+
+        publish_localization_tf(bot_pose);
     }
 }
 
