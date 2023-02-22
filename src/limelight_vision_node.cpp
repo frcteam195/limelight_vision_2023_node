@@ -157,7 +157,7 @@ void publish_localization_data(std::string limelight_name)
             return;
         }
 
-        if(poses.size() < 2)
+        if(poses.size() < 1)
         {
             return;
         }
