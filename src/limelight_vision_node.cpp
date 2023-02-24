@@ -306,7 +306,7 @@ limelight_vision_node::Limelight_Info process_limelight_data(std::string limelig
 void publish_limelight_data()
 {
 	static ros::Publisher limelight_pub = node->advertise<limelight_vision_node::Limelight_Status>("LimelightStatus", 1);
-	static limelight_vision_node::Limelight_Status limelightStatus;
+	limelight_vision_node::Limelight_Status limelightStatus;
 
 	ros::Rate rate(100);
 
