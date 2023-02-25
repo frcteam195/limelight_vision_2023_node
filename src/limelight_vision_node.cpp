@@ -35,7 +35,6 @@ std::vector<std::string> limelight_names;
 tf2_ros::Buffer tfBuffer;
 tf2_ros::TransformBroadcaster* tfBroadcaster;
 tf2_ros::StaticTransformBroadcaster * tfStaticBroadcaster;
-tf2_ros::TransformListener* tfListener;
 
 static double field_length = ck::math::feet_to_meters(54.0) + ck::math::inches_to_meters(3.25);
 static double field_width = ck::math::feet_to_meters(26) + ck::math::inches_to_meters(3.5);
@@ -355,7 +354,6 @@ int main(int argc, char **argv)
 	node = &n;
 	tfBroadcaster = new tf2_ros::TransformBroadcaster();
 	tfStaticBroadcaster = new tf2_ros::StaticTransformBroadcaster();
-	tfListener = new tf2_ros::TransformListener(tfBuffer);
 	publish_static_transforms();
 
 	std::thread limelightSendThread(publish_limelight_data);
