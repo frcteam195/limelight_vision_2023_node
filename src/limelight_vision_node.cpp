@@ -305,12 +305,12 @@ limelight_vision_node::Limelight_Info process_limelight_data(std::string limelig
 void publish_limelight_data()
 {
 	static ros::Publisher limelight_pub = node->advertise<limelight_vision_node::Limelight_Status>("LimelightStatus", 1);
-	limelight_vision_node::Limelight_Status limelightStatus;
 
 	ros::Rate rate(100);
 
 	while (ros::ok())
 	{
+	    limelight_vision_node::Limelight_Status limelightStatus;
         limelightStatus.limelights.push_back(process_limelight_data("limelight-front"));
         limelightStatus.limelights.push_back(process_limelight_data("limelight-back"));
         limelight_pub.publish(limelightStatus);
