@@ -89,7 +89,7 @@ void publish_localization_data(std::string limelight_name)
     // we're gonna go crazy here and do back to back outlier rejection across both cameras
     static float last_x = 0;
     static float last_y = 0;
-    static float last_yaw = 0;
+    //static float last_yaw = 0;
     static ros::Time last_transmitted = last_valid_json;
 
     if(last_valid_json > last_transmitted && bot_json.length() > 0)
@@ -202,30 +202,30 @@ void publish_localization_data(std::string limelight_name)
 
         // average_pose = average_pose / passing_poses.size();
 
-        if (std::abs(bot_pose.position.z()) > 0.1)
+        if (std::abs(bot_pose.position.z()) > 0.2)
         {
             ck::log_debug << "Rejecting pose with z: " << bot_pose.position.z() << std::flush;
             return;
         }
-        if (std::abs(bot_pose.orientation.pitch()) > ck::math::deg2rad(5.0))
+        if (std::abs(bot_pose.orientation.pitch()) > ck::math::deg2rad(10.0))
         {
             ck::log_debug << "Rejecting pose with pitch: " << ck::math::rad2deg(bot_pose.orientation.pitch()) << std::flush;
             return;
         }
-        if (std::abs(bot_pose.orientation.roll()) > ck::math::deg2rad(5.0))
+        if (std::abs(bot_pose.orientation.roll()) > ck::math::deg2rad(10.0))
         {
             ck::log_debug << "Rejecting pose with roll: " << ck::math::rad2deg(bot_pose.orientation.roll()) << std::flush;
             return;
         }
 
         bool reject = false;
-        reject = reject || std::abs(last_x - bot_pose.position.x()) > 0.5;
-        reject = reject || std::abs(last_y - bot_pose.position.y()) > 0.5;
-        reject = reject || std::abs(ck::math::rad2deg(last_yaw - bot_pose.orientation.yaw())) > 20.0;
+        reject = reject || std::abs(last_x - bot_pose.position.x()) > 1.0;
+        reject = reject || std::abs(last_y - bot_pose.position.y()) > 1.0;
+        //reject = reject || std::abs(ck::math::rad2deg(last_yaw - bot_pose.orientation.yaw())) > 40.0;
 
         last_x = bot_pose.position.x();
         last_y = bot_pose.position.y();
-        last_yaw = bot_pose.orientation.yaw();
+        //last_yaw = bot_pose.orientation.yaw();
 
         static uint32_t match_count = 0;
 
